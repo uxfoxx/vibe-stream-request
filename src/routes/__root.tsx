@@ -1,5 +1,4 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
-import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 
@@ -13,7 +12,10 @@ function NotFoundComponent() {
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
-          <Link to="/" className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
             Go home
           </Link>
         </div>
@@ -27,10 +29,25 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable Radio" },
-      { name: "description", content: "Live web radio with chat and song requests." },
+      { title: "Radio" },
+      { name: "description", content: "StreamShare Radio is a web-based application for live audio streaming and interactive chat." },
+      { name: "author", content: "Lovable" },
+      { property: "og:title", content: "Radio" },
+      { property: "og:description", content: "StreamShare Radio is a web-based application for live audio streaming and interactive chat." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Radio" },
+      { name: "twitter:description", content: "StreamShare Radio is a web-based application for live audio streaming and interactive chat." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/36deaf0e-0e65-4e9b-9f9e-fc47a9146c92/id-preview-446bd4b1--51a02f3d-796b-42ed-9b29-78d4ab8a7108.lovable.app-1776662053844.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/36deaf0e-0e65-4e9b-9f9e-fc47a9146c92/id-preview-446bd4b1--51a02f3d-796b-42ed-9b29-78d4ab8a7108.lovable.app-1776662053844.png" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,
@@ -39,8 +56,10 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <head><HeadContent /></head>
+    <html lang="en">
+      <head>
+        <HeadContent />
+      </head>
       <body>
         {children}
         <Scripts />
@@ -50,10 +69,5 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return (
-    <>
-      <Outlet />
-      <Toaster />
-    </>
-  );
+  return <Outlet />;
 }

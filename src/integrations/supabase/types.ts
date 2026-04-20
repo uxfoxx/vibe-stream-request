@@ -14,16 +14,184 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          queue_id: string | null
+          type: Database["public"]["Enums"]["message_type"]
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          queue_id?: string | null
+          type?: Database["public"]["Enums"]["message_type"]
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          queue_id?: string | null
+          type?: Database["public"]["Enums"]["message_type"]
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      playback_state: {
+        Row: {
+          current_queue_id: string | null
+          id: number
+          is_playing: boolean
+          started_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          current_queue_id?: string | null
+          id?: number
+          is_playing?: boolean
+          started_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          current_queue_id?: string | null
+          id?: number
+          is_playing?: boolean
+          started_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playback_state_current_queue_id_fkey"
+            columns: ["current_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          banned: boolean
+          created_at: string
+          id: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          banned?: boolean
+          created_at?: string
+          id: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          banned?: boolean
+          created_at?: string
+          id?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      queue: {
+        Row: {
+          artist: string | null
+          created_at: string
+          duration_seconds: number | null
+          external_id: string | null
+          file_url: string | null
+          id: string
+          position: number
+          requested_by: string | null
+          source: Database["public"]["Enums"]["track_source"]
+          status: Database["public"]["Enums"]["queue_status"]
+          thumbnail: string | null
+          title: string
+        }
+        Insert: {
+          artist?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          external_id?: string | null
+          file_url?: string | null
+          id?: string
+          position?: number
+          requested_by?: string | null
+          source: Database["public"]["Enums"]["track_source"]
+          status?: Database["public"]["Enums"]["queue_status"]
+          thumbnail?: string | null
+          title: string
+        }
+        Update: {
+          artist?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          external_id?: string | null
+          file_url?: string | null
+          id?: string
+          position?: number
+          requested_by?: string | null
+          source?: Database["public"]["Enums"]["track_source"]
+          status?: Database["public"]["Enums"]["queue_status"]
+          thumbnail?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      message_type: "chat" | "request" | "system"
+      queue_status: "pending" | "playing" | "played" | "skipped"
+      track_source: "youtube" | "upload"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +318,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      message_type: ["chat", "request", "system"],
+      queue_status: ["pending", "playing", "played", "skipped"],
+      track_source: ["youtube", "upload"],
+    },
   },
 } as const

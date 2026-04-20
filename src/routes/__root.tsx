@@ -55,10 +55,19 @@ export const Route = createRootRoute({
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
+  // F30: Apply saved theme before first paint to avoid flash
+  const themeScript = `
+    (function(){
+      var t = localStorage.getItem('theme') || 'dark';
+      document.documentElement.classList.toggle('dark', t === 'dark');
+    })();
+  `;
   return (
     <html lang="en">
       <head>
         <HeadContent />
+        {/* eslint-disable-next-line react/no-danger */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
         {children}

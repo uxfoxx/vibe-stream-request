@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Pause, Volume2, VolumeX, Music2, Radio } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Music2, Radio, Users } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlaybackState, QueueItem } from "@/lib/db-types";
 import { useAuth } from "@/lib/auth";
+import { RequestModal } from "@/components/RequestModal";
 
 declare global {
   interface Window { YT: any; onYouTubeIframeAPIReady: () => void; }
@@ -24,6 +26,12 @@ function loadYouTubeAPI(): Promise<void> {
   return ytApiPromise;
 }
 
+function formatTime(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
 export function Player() {
   const { isAdmin } = useAuth();
   const [state, setState] = useState<PlaybackState | null>(null);
@@ -31,6 +39,9 @@ export function Player() {
   const [muted, setMuted] = useState(true); // browsers block autoplay with sound
   const [volume, setVolume] = useState(80);
   const [hasJoined, setHasJoined] = useState(false);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [listenerCount, setListenerCount] = useState(0);
   const ytRef = useRef<any>(null);
   const ytContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -63,6 +74,36 @@ export function Player() {
     fetchTrack();
   }, [state?.current_queue_id]);
 
+  // Reset duration/elapsed when track changes
+  useEffect(() => {
+    setDuration(track?.duration_seconds ?? null);
+    setElapsed(0);
+  }, [track?.id]);
+
+  // Live progress tick
+  useEffect(() => {
+    if (!state?.is_playing || !hasJoined || !duration) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.min(currentOffsetSeconds(), duration));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state?.is_playing, state?.started_at, hasJoined, duration]);
+
+  // Listener presence channel (all visitors, not just joined)
+  useEffect(() => {
+    const key = crypto.randomUUID();
+    const ch = supabase.channel("listener-presence", { config: { presence: { key } } });
+    ch.on("presence", { event: "sync" }, () => {
+      setListenerCount(Object.keys(ch.presenceState()).length);
+    });
+    ch.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await ch.track({ online_at: new Date().toISOString() });
+      }
+    });
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
   // Compute current playback offset (live sync)
   function currentOffsetSeconds(): number {
     if (!state?.started_at) return 0;
@@ -91,9 +132,16 @@ export function Player() {
               const offset = currentOffsetSeconds();
               e.target.seekTo(offset, true);
               if (state?.is_playing) e.target.playVideo(); else e.target.pauseVideo();
+              // Capture duration and backfill DB if not already stored
+              const dur = e.target.getDuration();
+              if (typeof dur === "number" && dur > 0) {
+                setDuration(Math.round(dur));
+                if (!track.duration_seconds) {
+                  supabase.from("queue").update({ duration_seconds: Math.round(dur) }).eq("id", track.id);
+                }
+              }
             },
             onStateChange: (e: any) => {
-              // when the video ends, an admin/cron should advance; we just stop
               if (e.data === window.YT.PlayerState.ENDED && isAdmin) {
                 advanceQueue();
               }
@@ -136,7 +184,6 @@ export function Player() {
   }, [muted, volume]);
 
   async function advanceQueue() {
-    // Mark current as played, pick next pending by position
     if (!state?.current_queue_id) return;
     await supabase.from("queue").update({ status: "played" }).eq("id", state.current_queue_id);
     const { data: next } = await supabase
@@ -167,6 +214,11 @@ export function Player() {
       <div className="relative">
         <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-4">
           <Radio className="h-3.5 w-3.5" /> {state?.is_playing ? "Live now" : "Off air"}
+          {listenerCount > 0 && (
+            <span className="ml-auto flex items-center gap-1 normal-case tracking-normal text-xs">
+              <Users className="h-3 w-3" /> {listenerCount}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
@@ -180,7 +232,18 @@ export function Player() {
             <h2 className="text-2xl md:text-3xl font-bold truncate">{track?.title ?? "Nothing playing"}</h2>
             <p className="text-muted-foreground truncate">{track?.artist ?? (track ? "" : "Waiting for the next track…")}</p>
 
-            <div className="mt-6 flex items-center gap-3 justify-center sm:justify-start">
+            {/* Progress bar */}
+            {hasJoined && duration && duration > 0 && (
+              <div className="mt-4 space-y-1">
+                <Progress value={(elapsed / duration) * 100} className="h-1" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{formatTime(elapsed)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center gap-3 justify-center sm:justify-start flex-wrap">
               {!hasJoined ? (
                 <Button onClick={joinAndPlay} size="lg" className="rounded-full">
                   <Play className="h-5 w-5" /> Tune in
@@ -199,6 +262,7 @@ export function Player() {
                   <Pause className="h-4 w-4" /> Skip
                 </Button>
               )}
+              <RequestModal />
             </div>
           </div>
         </div>
@@ -207,7 +271,21 @@ export function Player() {
         <div className="absolute -z-10 opacity-0 pointer-events-none">
           <div ref={ytContainerRef} />
           {track?.source === "upload" && track.file_url && (
-            <audio ref={audioRef} src={track.file_url} onEnded={() => isAdmin && advanceQueue()} />
+            <audio
+              ref={audioRef}
+              src={track.file_url}
+              onEnded={() => isAdmin && advanceQueue()}
+              onLoadedMetadata={() => {
+                if (!audioRef.current) return;
+                const dur = Math.round(audioRef.current.duration);
+                if (dur > 0) {
+                  setDuration(dur);
+                  if (!track.duration_seconds) {
+                    supabase.from("queue").update({ duration_seconds: dur }).eq("id", track.id);
+                  }
+                }
+              }}
+            />
           )}
         </div>
       </div>

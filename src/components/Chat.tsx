@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Send, MessageSquare } from "lucide-react";
+import { Send, MessageSquare, Trash2, UserX } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import type { Message, Profile } from "@/lib/db-types";
@@ -11,7 +11,7 @@ import { searchYouTube } from "@/lib/youtube.functions";
 import { toast } from "sonner";
 
 export function Chat() {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [text, setText] = useState("");
@@ -55,6 +55,18 @@ export function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
+  async function deleteMessage(id: string) {
+    const { error } = await supabase.from("messages").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    // Realtime DELETE subscription removes it from local state automatically
+  }
+
+  async function banUser(userId: string) {
+    const { error } = await supabase.from("profiles").update({ banned: true }).eq("id", userId);
+    if (error) toast.error(error.message);
+    else toast.success("User banned");
+  }
+
   async function send(e: FormEvent) {
     e.preventDefault();
     if (!user || !profile || !text.trim() || sending) return;
@@ -96,16 +108,7 @@ export function Chat() {
           await supabase.from("messages").insert({
             user_id: null, content: `Added "${top.title}" to the queue.`, type: "system", queue_id: inserted.id,
           });
-          // If nothing currently playing, start it
-          const { data: ps } = await supabase.from("playback_state").select("*").eq("id", 1).maybeSingle();
-          if (ps && !ps.current_queue_id) {
-            await supabase.from("queue").update({ status: "playing" }).eq("id", inserted.id);
-            await supabase.from("playback_state").update({
-              current_queue_id: inserted.id,
-              started_at: new Date().toISOString(),
-              is_playing: true,
-            }).eq("id", 1);
-          }
+          // Playback auto-start is handled server-side by the maybe_start_playback trigger
         }
       } else {
         await supabase.from("messages").insert({ user_id: user.id, content, type: "chat" });
@@ -132,9 +135,31 @@ export function Chat() {
             return <div key={m.id} className="text-xs text-muted-foreground italic px-2 py-1">{m.content}</div>;
           }
           return (
-            <div key={m.id} className={`text-sm px-2 py-1 rounded ${m.type === "request" ? "bg-primary/10" : ""}`}>
+            <div key={m.id} className={`group relative text-sm px-2 py-1 rounded ${m.type === "request" ? "bg-primary/10" : ""}`}>
               <span className="font-semibold mr-2">@{author?.username ?? "user"}</span>
               <span>{m.content}</span>
+              {isAdmin && (
+                <span className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                  {m.user_id && m.user_id !== user?.id && (
+                    <button
+                      onClick={() => banUser(m.user_id!)}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label="Ban user"
+                      title="Ban user"
+                    >
+                      <UserX className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteMessage(m.id)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label="Delete message"
+                    title="Delete message"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
             </div>
           );
         })}

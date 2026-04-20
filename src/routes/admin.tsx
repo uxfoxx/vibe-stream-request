@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Header } from "@/components/Header";
@@ -9,7 +9,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { searchYouTube } from "@/lib/youtube.functions";
 import type { QueueItem } from "@/lib/db-types";
 import { toast } from "sonner";
-import { Music2, Plus, Trash2, Upload, Search, Loader2 } from "lucide-react";
+import { Music2, Plus, Trash2, Upload, Search, Loader2, GripVertical } from "lucide-react";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — Lovable Radio" }] }),
@@ -53,15 +62,67 @@ function CenterMsg({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── Sortable queue item ────────────────────────────────────────────────────
+
+function SortableQueueItem({
+  item, onRemove,
+}: { item: QueueItem; onRemove: (id: string) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const isPlaying = item.status === "playing";
+
+  return (
+    <li ref={setNodeRef} style={style} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50">
+      <button
+        {...(isPlaying ? {} : { ...attributes, ...listeners })}
+        className={`p-1 rounded ${isPlaying ? "text-muted-foreground/30 cursor-not-allowed" : "cursor-grab text-muted-foreground hover:text-foreground"}`}
+        aria-label="Drag to reorder"
+        tabIndex={isPlaying ? -1 : 0}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="h-10 w-10 rounded bg-muted overflow-hidden grid place-items-center shrink-0">
+        {item.thumbnail ? <img src={item.thumbnail} alt="" className="h-full w-full object-cover" /> : <Music2 className="h-4 w-4" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">
+          {isPlaying && <span className="text-primary mr-2">▶</span>}
+          {item.title}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">{item.artist} · {item.source}</p>
+      </div>
+      <Button size="icon" variant="ghost" onClick={() => onRemove(item.id)}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </li>
+  );
+}
+
+// ─── Admin dashboard ────────────────────────────────────────────────────────
+
 function AdminDashboard() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const search = useServerFn(searchYouTube);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Array<{ videoId: string; title: string; channel: string; thumbnail: string }>>([]);
   const [searching, setSearching] = useState(false);
+  const reordering = useRef(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     async function load() {
+      if (reordering.current) return; // don't clobber optimistic update mid-drag
       const { data } = await supabase.from("queue").select("*")
         .in("status", ["pending", "playing"])
         .order("position", { ascending: true });
@@ -134,6 +195,30 @@ function AdminDashboard() {
     e.target.value = "";
   }
 
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = items.findIndex(i => i.id === active.id);
+    const newIndex = items.findIndex(i => i.id === over.id);
+    const reordered = arrayMove(items, oldIndex, newIndex);
+
+    // Optimistic update
+    setItems(reordered);
+    reordering.current = true;
+
+    const now = Date.now();
+    try {
+      await Promise.all(
+        reordered.map(({ id }, idx) =>
+          supabase.from("queue").update({ position: now + idx * 1000 }).eq("id", id)
+        )
+      );
+    } finally {
+      reordering.current = false;
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -174,25 +259,15 @@ function AdminDashboard() {
           {items.length === 0 ? (
             <p className="text-sm text-muted-foreground">Empty.</p>
           ) : (
-            <ul className="space-y-2">
-              {items.map(it => (
-                <li key={it.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50">
-                  <div className="h-10 w-10 rounded bg-muted overflow-hidden grid place-items-center">
-                    {it.thumbnail ? <img src={it.thumbnail} alt="" className="h-full w-full object-cover" /> : <Music2 className="h-4 w-4" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {it.status === "playing" && <span className="text-primary mr-2">▶</span>}
-                      {it.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{it.artist} · {it.source}</p>
-                  </div>
-                  <Button size="icon" variant="ghost" onClick={() => removeItem(it.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-2">
+                  {items.map(it => (
+                    <SortableQueueItem key={it.id} item={it} onRemove={removeItem} />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </section>
       </div>

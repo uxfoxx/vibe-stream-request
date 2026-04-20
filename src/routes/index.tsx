@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Player } from "@/components/Player";
 import { Queue } from "@/components/Queue";
+import { History } from "@/components/History";
 import { Chat } from "@/components/Chat";
 import { AuthProvider } from "@/lib/auth";
 
@@ -28,6 +29,7 @@ function Index() {
             <div className="lg:col-span-2 space-y-6">
               <Player />
               <Queue />
+              <History />
             </div>
             <div className="lg:col-span-1">
               <Chat />

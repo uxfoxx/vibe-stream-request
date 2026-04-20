@@ -3,7 +3,7 @@ import { Play, Pause, Volume2, VolumeX, Music2, Radio } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import type { PlaybackState, QueueItem } from "@/integrations/supabase/types";
+import type { PlaybackState, QueueItem } from "@/lib/db-types";
 import { useAuth } from "@/lib/auth";
 
 declare global {

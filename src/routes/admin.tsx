@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { searchYouTube } from "@/lib/youtube.functions";
-import type { QueueItem } from "@/integrations/supabase/types";
+import type { QueueItem } from "@/lib/db-types";
 import { toast } from "sonner";
 import { Music2, Plus, Trash2, Upload, Search, Loader2 } from "lucide-react";
 

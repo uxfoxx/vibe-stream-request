@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Music2, ListMusic } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import type { QueueItem, Profile } from "@/integrations/supabase/types";
+import type { QueueItem, Profile } from "@/lib/db-types";
 
 export function Queue() {
   const [items, setItems] = useState<QueueItem[]>([]);

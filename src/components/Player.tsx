@@ -45,6 +45,8 @@ export function Player() {
   const ytRef = useRef<any>(null);
   const ytContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Keep a ref so event callbacks always see current server state (no stale closure)
+  const stateRef = useRef<PlaybackState | null>(null);
 
   // Load playback state + subscribe
   useEffect(() => {
@@ -52,10 +54,12 @@ export function Player() {
 
     async function init() {
       const { data } = await supabase.from("playback_state").select("*").eq("id", 1).maybeSingle();
+      stateRef.current = data as PlaybackState;
       setState(data as PlaybackState);
       ch = supabase
         .channel("playback")
         .on("postgres_changes", { event: "*", schema: "public", table: "playback_state" }, (payload) => {
+          stateRef.current = payload.new as PlaybackState;
           setState(payload.new as PlaybackState);
         })
         .subscribe();
@@ -145,6 +149,10 @@ export function Player() {
               if (e.data === window.YT.PlayerState.ENDED && isAdmin) {
                 advanceQueue();
               }
+              // Live radio: force-resume if paused by user (spacebar, media keys, etc.)
+              if (e.data === window.YT.PlayerState.PAUSED && stateRef.current?.is_playing) {
+                setTimeout(() => e.target.playVideo(), 50);
+              }
             },
           },
         });
@@ -205,6 +213,11 @@ export function Player() {
   function joinAndPlay() {
     setHasJoined(true);
     setMuted(false);
+    // Prevent OS/browser media controls from pausing live radio
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.setActionHandler("pause", () => {});
+      navigator.mediaSession.setActionHandler("stop", () => {});
+    }
   }
 
   return (
@@ -275,6 +288,12 @@ export function Player() {
               ref={audioRef}
               src={track.file_url}
               onEnded={() => isAdmin && advanceQueue()}
+              onPause={() => {
+                // Live radio: resume immediately if server says we're playing
+                if (stateRef.current?.is_playing && audioRef.current) {
+                  audioRef.current.play().catch(() => {});
+                }
+              }}
               onLoadedMetadata={() => {
                 if (!audioRef.current) return;
                 const dur = Math.round(audioRef.current.duration);

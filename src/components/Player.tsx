@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Pause, Volume2, VolumeX, Music2, Radio, Users } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Music2, Radio, Users, Share2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -7,6 +7,10 @@ import { supabase } from "@/integrations/supabase/client";
 import type { PlaybackState, QueueItem } from "@/lib/db-types";
 import { useAuth } from "@/lib/auth";
 import { RequestModal } from "@/components/RequestModal";
+import { SkipVote } from "@/components/SkipVote";
+import { TrackReactions } from "@/components/TrackReactions";
+import { usePlayback } from "@/lib/playback-context";
+import { toast } from "sonner";
 
 declare global {
   interface Window { YT: any; onYouTubeIframeAPIReady: () => void; }
@@ -33,12 +37,15 @@ function formatTime(s: number): string {
 }
 
 export function Player() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const { hasJoined, muted, setMuted, joinAndPlay } = usePlayback();
   const [state, setState] = useState<PlaybackState | null>(null);
   const [track, setTrack] = useState<QueueItem | null>(null);
-  const [muted, setMuted] = useState(true); // browsers block autoplay with sound
-  const [volume, setVolume] = useState(80);
-  const [hasJoined, setHasJoined] = useState(false);
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window === "undefined") return 80;
+    const saved = localStorage.getItem("radio-volume");
+    return saved ? parseInt(saved, 10) : 80;
+  });
   const [duration, setDuration] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [listenerCount, setListenerCount] = useState(0);
@@ -47,6 +54,12 @@ export function Player() {
   const audioRef = useRef<HTMLAudioElement>(null);
   // Keep a ref so event callbacks always see current server state (no stale closure)
   const stateRef = useRef<PlaybackState | null>(null);
+  // Now-playing notification ref
+  const lastNotifiedQueueId = useRef<string | null>(null);
+  // Track transition announcement ref
+  const prevTrackIdRef = useRef<string | null>(null);
+  // Listener milestone ref
+  const prevListenerCountRef = useRef(0);
 
   // Load playback state + subscribe
   useEffect(() => {
@@ -108,6 +121,52 @@ export function Player() {
     return () => { supabase.removeChannel(ch); };
   }, []);
 
+  // F4: Now-playing notification when your request starts
+  useEffect(() => {
+    if (!track || !user) return;
+    if (track.id === lastNotifiedQueueId.current) return;
+    if (track.requested_by === user.id) {
+      lastNotifiedQueueId.current = track.id;
+      toast.success("🎵 Your request is now playing!");
+    }
+  }, [track?.id, user?.id]);
+
+  // F16: Track transition announcement in chat
+  useEffect(() => {
+    if (!track) return;
+    if (prevTrackIdRef.current === null) {
+      // On mount: just record without announcing
+      prevTrackIdRef.current = track.id;
+      return;
+    }
+    if (prevTrackIdRef.current === track.id) return;
+    prevTrackIdRef.current = track.id;
+    supabase.from("messages").insert({
+      user_id: null,
+      content: `▶ Now playing: ${track.title}${track.artist ? ` — ${track.artist}` : ""}`,
+      type: "system",
+      queue_id: track.id,
+    }).then(() => {});
+  }, [track?.id]);
+
+  // F22: Listener milestone moments
+  useEffect(() => {
+    const milestones = [5, 10, 25, 50, 100];
+    const prev = prevListenerCountRef.current;
+    if (listenerCount > prev && milestones.includes(listenerCount)) {
+      const lastMilestone = parseInt(localStorage.getItem("last-milestone") ?? "0", 10);
+      if (listenerCount > lastMilestone) {
+        localStorage.setItem("last-milestone", String(listenerCount));
+        supabase.from("messages").insert({
+          user_id: null,
+          content: `🎉 ${listenerCount} people are tuning in right now!`,
+          type: "system",
+        }).then(() => {});
+      }
+    }
+    prevListenerCountRef.current = listenerCount;
+  }, [listenerCount]);
+
   // Compute current playback offset (live sync)
   function currentOffsetSeconds(): number {
     if (!state?.started_at) return 0;
@@ -146,12 +205,20 @@ export function Player() {
               }
             },
             onStateChange: (e: any) => {
-              if (e.data === window.YT.PlayerState.ENDED && isAdmin) {
+              // F1: client-side advance (cron is safety net)
+              if (e.data === window.YT.PlayerState.ENDED) {
                 advanceQueue();
               }
               // Live radio: force-resume if paused by user (spacebar, media keys, etc.)
               if (e.data === window.YT.PlayerState.PAUSED && stateRef.current?.is_playing) {
                 setTimeout(() => e.target.playVideo(), 50);
+              }
+            },
+            // F14: YouTube unavailability detection
+            onError: (e: any) => {
+              if ([2, 5, 100, 101, 150].includes(e.data)) {
+                toast.error("Track unavailable, skipping…");
+                advanceQueue();
               }
             },
           },
@@ -185,11 +252,26 @@ export function Player() {
     if (state?.is_playing) a.play().catch(() => {}); else a.pause();
   }, [track?.id, state?.is_playing, state?.started_at, hasJoined]);
 
-  // Volume / mute
+  // Volume / mute — F8: persist volume
   useEffect(() => {
     if (ytRef.current?.setVolume) ytRef.current.setVolume(muted ? 0 : volume);
     if (audioRef.current) { audioRef.current.muted = muted; audioRef.current.volume = volume / 100; }
+    localStorage.setItem("radio-volume", String(volume));
   }, [muted, volume]);
+
+  // F9: Keyboard shortcuts
+  useEffect(() => {
+    if (!hasJoined) return;
+    function onKey(e: KeyboardEvent) {
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "m" || e.key === "M") setMuted(m => !m);
+      if (e.key === "ArrowUp") { e.preventDefault(); setVolume(v => Math.min(100, v + 5)); }
+      if (e.key === "ArrowDown") { e.preventDefault(); setVolume(v => Math.max(0, v - 5)); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasJoined]);
 
   async function advanceQueue() {
     if (!state?.current_queue_id) return;
@@ -210,13 +292,15 @@ export function Player() {
     }
   }
 
-  function joinAndPlay() {
-    setHasJoined(true);
-    setMuted(false);
-    // Prevent OS/browser media controls from pausing live radio
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.setActionHandler("pause", () => {});
-      navigator.mediaSession.setActionHandler("stop", () => {});
+  // F28: Share button
+  function shareNowPlaying() {
+    if (!track) return;
+    const text = `Listening to "${track.title}" on Lovable Radio`;
+    if (navigator.share) {
+      navigator.share({ title: text, url: window.location.href }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(`${text} — ${window.location.href}`);
+      toast.success("Link copied!");
     }
   }
 
@@ -225,8 +309,19 @@ export function Player() {
       style={{ background: "var(--gradient-radio)", boxShadow: "var(--shadow-glow)" }}>
       <div className="absolute inset-0 bg-card/60 backdrop-blur-xl" />
       <div className="relative">
+        {/* F23: Animated on-air indicator */}
         <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-4">
-          <Radio className="h-3.5 w-3.5" /> {state?.is_playing ? "Live now" : "Off air"}
+          {state?.is_playing ? (
+            <span className="flex items-center gap-1.5 normal-case tracking-normal">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              </span>
+              <span className="uppercase tracking-widest text-xs">On Air</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5"><Radio className="h-3.5 w-3.5" /> Off air</span>
+          )}
           {listenerCount > 0 && (
             <span className="ml-auto flex items-center gap-1 normal-case tracking-normal text-xs">
               <Users className="h-3 w-3" /> {listenerCount}
@@ -256,6 +351,11 @@ export function Player() {
               </div>
             )}
 
+            {/* F17: Track reactions */}
+            {track && state?.is_playing && (
+              <TrackReactions queueId={track.id} />
+            )}
+
             <div className="mt-4 flex items-center gap-3 justify-center sm:justify-start flex-wrap">
               {!hasJoined ? (
                 <Button onClick={joinAndPlay} size="lg" className="rounded-full">
@@ -275,8 +375,23 @@ export function Player() {
                   <Pause className="h-4 w-4" /> Skip
                 </Button>
               )}
+              {/* F10: Skip voting */}
+              {track && hasJoined && (
+                <SkipVote queueId={track.id} onThresholdReached={advanceQueue} />
+              )}
+              {/* F28: Share button */}
+              {track && (
+                <Button variant="ghost" size="sm" onClick={shareNowPlaying} title="Share now playing">
+                  <Share2 className="h-4 w-4" />
+                </Button>
+              )}
               <RequestModal />
             </div>
+            {hasJoined && (
+              <p className="text-xs text-muted-foreground mt-2 text-center sm:text-left">
+                Press M to mute · ↑↓ adjust volume
+              </p>
+            )}
           </div>
         </div>
 
@@ -287,7 +402,7 @@ export function Player() {
             <audio
               ref={audioRef}
               src={track.file_url}
-              onEnded={() => isAdmin && advanceQueue()}
+              onEnded={() => advanceQueue()}
               onPause={() => {
                 // Live radio: resume immediately if server says we're playing
                 if (stateRef.current?.is_playing && audioRef.current) {

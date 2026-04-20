@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as EmbedRouteImport } from './routes/embed'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -22,6 +23,11 @@ const SignupRoute = SignupRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmbedRoute = EmbedRouteImport.update({
+  id: '/embed',
+  path: '/embed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -38,12 +44,14 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/login' | '/signup'
+  fullPaths: '/' | '/admin' | '/embed' | '/login' | '/signup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/login' | '/signup'
-  id: '__root__' | '/' | '/admin' | '/login' | '/signup'
+  to: '/' | '/admin' | '/embed' | '/login' | '/signup'
+  id: '__root__' | '/' | '/admin' | '/embed' | '/login' | '/signup'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  EmbedRoute: typeof EmbedRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/embed': {
+      id: '/embed'
+      path: '/embed'
+      fullPath: '/embed'
+      preLoaderRoute: typeof EmbedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  EmbedRoute: EmbedRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
 }

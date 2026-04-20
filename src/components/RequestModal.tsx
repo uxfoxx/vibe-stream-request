@@ -12,7 +12,11 @@ import { toast } from "sonner";
 
 type SearchResult = { videoId: string; title: string; channel: string; thumbnail: string };
 
-export function RequestModal() {
+interface Props {
+  triggerLabel?: string;
+}
+
+export function RequestModal({ triggerLabel }: Props) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -49,6 +53,16 @@ export function RequestModal() {
     if (!user) return;
     setSubmitting(r.videoId);
     try {
+      // F2: Duplicate prevention
+      const { data: existing } = await supabase.from("queue")
+        .select("id").eq("external_id", r.videoId).in("status", ["pending", "playing"]).maybeSingle();
+      if (existing) { toast.error("This song is already in the queue"); return; }
+
+      // F3: Request limit per user (max 2 pending)
+      const { count } = await supabase.from("queue")
+        .select("id", { count: "exact" }).eq("requested_by", user.id).eq("status", "pending");
+      if ((count ?? 0) >= 2) { toast.error("You already have 2 songs in the queue"); return; }
+
       const { error } = await supabase.from("queue").insert({
         source: "youtube",
         external_id: r.videoId,
@@ -69,9 +83,15 @@ export function RequestModal() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="rounded-full gap-1.5">
-          <Music2 className="h-4 w-4" /> Request
-        </Button>
+        {triggerLabel ? (
+          <Button variant="ghost" size="sm" className="text-primary">
+            {triggerLabel}
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="rounded-full gap-1.5">
+            <Music2 className="h-4 w-4" /> Request
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

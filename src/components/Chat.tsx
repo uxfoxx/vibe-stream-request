@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Send, MessageSquare, Trash2 } from "lucide-react";
+import { Send, MessageSquare, Trash2, UserX } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import type { Message, MessageReaction, Profile } from "@/lib/db-types";
@@ -160,6 +161,17 @@ export function Chat() {
   async function deleteMessage(id: string) {
     const { error } = await supabase.from("messages").delete().eq("id", id);
     if (error) toast.error(error.message);
+  }
+
+  async function banUser(userId: string, type: "10min" | "1hr" | "permanent") {
+    if (type === "permanent") {
+      await supabase.from("profiles").update({ banned: true, ban_reason: "Banned by admin" }).eq("id", userId);
+    } else {
+      const minutes = type === "10min" ? 10 : 60;
+      const until = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+      await supabase.from("profiles").update({ temp_ban_until: until }).eq("id", userId);
+    }
+    toast.success("User banned");
   }
 
   async function toggleMessageReaction(messageId: string, emoji: string) {
@@ -371,14 +383,33 @@ export function Chat() {
                   </span>
                 )}
                 {isAdmin && (
-                  <button
-                    onClick={() => deleteMessage(m.id)}
-                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label="Delete message"
-                    title="Delete message"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => deleteMessage(m.id)}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label="Delete message"
+                      title="Delete message"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    {m.user_id && m.user_id !== user?.id && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Ban user"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => banUser(m.user_id!, "10min")}>Timeout 10 min</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => banUser(m.user_id!, "1hr")}>Timeout 1 hr</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => banUser(m.user_id!, "permanent")}>Ban permanently</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </>
                 )}
               </span>
             </div>

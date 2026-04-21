@@ -205,8 +205,8 @@ export function Player() {
               }
             },
             onStateChange: (e: any) => {
-              // F1: client-side advance (cron is safety net)
-              if (e.data === window.YT.PlayerState.ENDED) {
+              // F1: client-side advance (admin only — cron is safety net for all clients)
+              if (e.data === window.YT.PlayerState.ENDED && isAdmin) {
                 advanceQueue();
               }
               // Live radio: force-resume if paused by user (spacebar, media keys, etc.)
@@ -214,9 +214,9 @@ export function Player() {
                 setTimeout(() => e.target.playVideo(), 50);
               }
             },
-            // F14: YouTube unavailability detection
+            // F14: YouTube unavailability detection (admin only — prevents race condition)
             onError: (e: any) => {
-              if ([2, 5, 100, 101, 150].includes(e.data)) {
+              if ([2, 5, 100, 101, 150].includes(e.data) && isAdmin) {
                 toast.error("Track unavailable, skipping…");
                 advanceQueue();
               }
@@ -402,7 +402,7 @@ export function Player() {
             <audio
               ref={audioRef}
               src={track.file_url}
-              onEnded={() => advanceQueue()}
+              onEnded={() => { if (isAdmin) advanceQueue(); }}
               onPause={() => {
                 // Live radio: resume immediately if server says we're playing
                 if (stateRef.current?.is_playing && audioRef.current) {

@@ -70,7 +70,7 @@ export function Player() {
       stateRef.current = data as PlaybackState;
       setState(data as PlaybackState);
       ch = supabase
-        .channel("playback")
+        .channel(`playback-${Math.random().toString(36).slice(2)}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "playback_state" }, (payload) => {
           stateRef.current = payload.new as PlaybackState;
           setState(payload.new as PlaybackState);
@@ -108,8 +108,8 @@ export function Player() {
 
   // Listener presence channel (all visitors, not just joined)
   useEffect(() => {
-    const key = crypto.randomUUID();
-    const ch = supabase.channel("listener-presence", { config: { presence: { key } } });
+    const key = `listener-presence-${Math.random().toString(36).slice(2)}`;
+    const ch = supabase.channel(key, { config: { presence: { key } } });
     ch.on("presence", { event: "sync" }, () => {
       setListenerCount(Object.keys(ch.presenceState()).length);
     });
@@ -166,6 +166,32 @@ export function Player() {
     }
     prevListenerCountRef.current = listenerCount;
   }, [listenerCount]);
+
+  // MediaSession API — lock screen controls + background audio keep-alive
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    if (!track || !hasJoined) {
+      navigator.mediaSession.playbackState = "none";
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist || "Lovable Radio",
+      album: "Live Radio",
+      artwork: track.thumbnail
+        ? [{ src: track.thumbnail, sizes: "512x512", type: "image/jpeg" }]
+        : [],
+    });
+    navigator.mediaSession.playbackState = muted ? "paused" : "playing";
+    navigator.mediaSession.setActionHandler("play", () => setMuted(false));
+    navigator.mediaSession.setActionHandler("pause", () => setMuted(true));
+    // Disable actions that don't apply to a live stream
+    try { navigator.mediaSession.setActionHandler("stop", null); } catch {}
+    try { navigator.mediaSession.setActionHandler("nexttrack", null); } catch {}
+    try { navigator.mediaSession.setActionHandler("previoustrack", null); } catch {}
+    try { navigator.mediaSession.setActionHandler("seekbackward", null); } catch {}
+    try { navigator.mediaSession.setActionHandler("seekforward", null); } catch {}
+  }, [track?.id, hasJoined, muted]);
 
   // Compute current playback offset (live sync)
   function currentOffsetSeconds(): number {
@@ -305,7 +331,7 @@ export function Player() {
   }
 
   return (
-    <div className="rounded-2xl border border-border p-6 md:p-8 relative overflow-hidden"
+    <div className="rounded-2xl border border-border p-4 sm:p-6 md:p-8 relative overflow-hidden"
       style={{ background: "var(--gradient-radio)", boxShadow: "var(--shadow-glow)" }}>
       <div className="absolute inset-0 bg-card/60 backdrop-blur-xl" />
       <div className="relative">
@@ -330,14 +356,14 @@ export function Player() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-          <div className="h-40 w-40 rounded-xl overflow-hidden bg-muted shrink-0 grid place-items-center">
+          <div className="h-28 w-28 sm:h-40 sm:w-40 rounded-xl overflow-hidden bg-muted shrink-0 grid place-items-center">
             {track?.thumbnail
               ? <img src={track.thumbnail} alt={track.title} className="h-full w-full object-cover" />
               : <Music2 className="h-12 w-12 text-muted-foreground" />}
           </div>
 
           <div className="flex-1 min-w-0 text-center sm:text-left">
-            <h2 className="text-2xl md:text-3xl font-bold truncate">{track?.title ?? "Nothing playing"}</h2>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold line-clamp-2">{track?.title ?? "Nothing playing"}</h2>
             <p className="text-muted-foreground truncate">{track?.artist ?? (track ? "" : "Waiting for the next track…")}</p>
 
             {/* Progress bar */}

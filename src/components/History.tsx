@@ -7,7 +7,6 @@ import type { QueueItem, Profile } from "@/lib/db-types";
 export function History() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-
   useEffect(() => {
     async function load() {
       const { data } = await supabase
@@ -19,7 +18,8 @@ export function History() {
       setItems((data as QueueItem[]) || []);
     }
     load();
-    const ch = supabase.channel("queue-history")
+    const chName = `queue-history-${Math.random().toString(36).slice(2)}`;
+    const ch = supabase.channel(chName)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };

@@ -58,7 +58,7 @@ export function Chat() {
       setMessages((data as Message[]) || []);
     }
     load();
-    const ch = supabase.channel("chat")
+    const ch = supabase.channel(`chat-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (p) => {
         setMessages(m => [...m, p.new as Message]);
       })
@@ -83,7 +83,7 @@ export function Chat() {
       setReactions(map);
     });
 
-    const ch = supabase.channel("message-reactions-all")
+    const ch = supabase.channel(`message-reactions-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (p) => {
         if (p.eventType === "INSERT") {
           const r = p.new as MessageReaction;
@@ -318,7 +318,7 @@ export function Chat() {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card flex flex-col h-[600px]">
+    <div className="rounded-xl border border-border bg-card flex flex-col h-[calc(100dvh-128px)] lg:h-[600px]">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2 text-sm font-semibold">
         <MessageSquare className="h-4 w-4" /> Live chat
         <span className="ml-auto text-xs font-normal text-muted-foreground hidden sm:inline">

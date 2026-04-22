@@ -29,7 +29,7 @@ export function MiniPlayer({ hasJoined, muted, setMuted, joinAndPlay }: Props) {
     supabase.from("playback_state").select("*").eq("id", 1).maybeSingle().then(({ data }) => {
       setState(data as PlaybackState);
     });
-    const ch = supabase.channel("mini-playback")
+    const ch = supabase.channel(`mini-playback-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "playback_state" }, (p) => {
         setState(p.new as PlaybackState);
       })
@@ -47,7 +47,7 @@ export function MiniPlayer({ hasJoined, muted, setMuted, joinAndPlay }: Props) {
   if (!visible || !state?.is_playing) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur border-t border-border shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur border-t border-border shadow-lg hidden lg:block">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
         <div className="h-9 w-9 rounded overflow-hidden bg-muted shrink-0 grid place-items-center">
           {track?.thumbnail

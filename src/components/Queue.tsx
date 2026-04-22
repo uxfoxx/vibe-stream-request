@@ -13,7 +13,6 @@ export function Queue() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [upvotes, setUpvotes] = useState<QueueUpvote[]>([]);
-
   useEffect(() => {
     async function load() {
       const { data } = await supabase
@@ -22,7 +21,7 @@ export function Queue() {
       setItems((data as QueueItem[]) || []);
     }
     load();
-    const ch = supabase.channel("queue-public")
+    const ch = supabase.channel(`queue-public-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -36,7 +35,7 @@ export function Queue() {
       setUpvotes((data as QueueUpvote[]) ?? []);
     });
 
-    const ch = supabase.channel("queue-upvotes")
+    const ch = supabase.channel(`queue-upvotes-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue_upvotes" }, async () => {
         const { data } = await supabase.from("queue_upvotes").select("*").in("queue_id", ids);
         setUpvotes((data as QueueUpvote[]) ?? []);

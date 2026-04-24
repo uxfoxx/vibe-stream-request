@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as EmbedRouteImport } from './routes/embed'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicHooksRunScheduledPlaylistsRouteImport } from './routes/api/public/hooks/run-scheduled-playlists'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -40,6 +41,12 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksRunScheduledPlaylistsRoute =
+  ApiPublicHooksRunScheduledPlaylistsRouteImport.update({
+    id: '/api/public/hooks/run-scheduled-playlists',
+    path: '/api/public/hooks/run-scheduled-playlists',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/api/public/hooks/run-scheduled-playlists': typeof ApiPublicHooksRunScheduledPlaylistsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/api/public/hooks/run-scheduled-playlists': typeof ApiPublicHooksRunScheduledPlaylistsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +71,33 @@ export interface FileRoutesById {
   '/embed': typeof EmbedRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/api/public/hooks/run-scheduled-playlists': typeof ApiPublicHooksRunScheduledPlaylistsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/embed' | '/login' | '/signup'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/embed'
+    | '/login'
+    | '/signup'
+    | '/api/public/hooks/run-scheduled-playlists'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/embed' | '/login' | '/signup'
-  id: '__root__' | '/' | '/admin' | '/embed' | '/login' | '/signup'
+  to:
+    | '/'
+    | '/admin'
+    | '/embed'
+    | '/login'
+    | '/signup'
+    | '/api/public/hooks/run-scheduled-playlists'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/embed'
+    | '/login'
+    | '/signup'
+    | '/api/public/hooks/run-scheduled-playlists'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +106,7 @@ export interface RootRouteChildren {
   EmbedRoute: typeof EmbedRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicHooksRunScheduledPlaylistsRoute: typeof ApiPublicHooksRunScheduledPlaylistsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/run-scheduled-playlists': {
+      id: '/api/public/hooks/run-scheduled-playlists'
+      path: '/api/public/hooks/run-scheduled-playlists'
+      fullPath: '/api/public/hooks/run-scheduled-playlists'
+      preLoaderRoute: typeof ApiPublicHooksRunScheduledPlaylistsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +162,8 @@ const rootRouteChildren: RootRouteChildren = {
   EmbedRoute: EmbedRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  ApiPublicHooksRunScheduledPlaylistsRoute:
+    ApiPublicHooksRunScheduledPlaylistsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

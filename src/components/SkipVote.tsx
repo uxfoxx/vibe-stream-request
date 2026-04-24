@@ -56,8 +56,11 @@ export function SkipVote({ queueId, onThresholdReached }: Props) {
           return;
         }
         setHasVoted(true);
-        // The DB trigger handles auto-advance; client side just for snappy UX
-        if (voteCount + 1 >= SKIP_THRESHOLD) onThresholdReached();
+        // On threshold, trigger the atomic server-side advance.
+        if (voteCount + 1 >= SKIP_THRESHOLD) {
+          await (supabase.rpc as any)("advance_queue", { expected_current: queueId });
+          onThresholdReached();
+        }
       }
     } finally {
       setLoading(false);

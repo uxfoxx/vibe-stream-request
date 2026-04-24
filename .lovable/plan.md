@@ -1,57 +1,55 @@
 
-# Web Radio App — Plan
+# Fix Radio Playback, Skip & Sync Issues
 
-A live, synced web radio where guests can listen and authenticated users can chat and request songs. An admin curates and controls the queue.
+## What's broken (confirmed by inspecting the database)
 
-## Core experience
+1. **Two tracks have `status = "playing"` at the same time.** When a track ends, *every* listener's browser races to call `advanceQueue()`. Multiple concurrent `UPDATE`s mark the next track playing more than once and skip past the actual next song. This is the root cause of the "not playing live properly" symptom.
 
-- **Landing / Player page** (public): big "now playing" card (album art, title, artist), play/pause + volume, live listener count, current queue, and a chat panel on the side.
-- **Login / Signup** via Lovable Cloud auth (email + password). Guests can listen without logging in; chatting and requesting requires login.
-- **Admin dashboard** (role-gated): search YouTube, upload audio files, manage queue (reorder/skip/remove), and ban users from chat.
+2. **Skip doesn't work reliably.** Both the admin Skip button and the listener skip-vote use the same racy client-side `advanceQueue()`. When several clients press it, the queue jumps unpredictably.
 
-## Audio playback
+3. **Inconsistent `position` scheme breaks queue order.** Some rows store position as epoch seconds (1.77e9), others as epoch milliseconds (1.77e12) from drag-reorder. Newly requested songs always sort before drag-reordered ones.
 
-- Queue items are either:
-  - **YouTube tracks** — searched via YouTube Data API, played through a hidden YouTube IFrame player on each listener's browser.
-  - **Uploaded files** — MP3/WAV uploaded by admin to Cloud Storage, played via HTML5 `<audio>`.
-- **Live sync**: server stores `current_track`, `started_at`, and `is_playing`. When a listener joins or a new track starts, the client seeks to `now - started_at` so everyone hears the same moment. When a track ends, the server auto-advances to the next queue item and broadcasts the change in real time.
+4. **`started_at` drifts.** `playback_state.updated_at` is stale; no trigger keeps it fresh.
 
-## Song requests
+## Fix — one atomic server-side advance, called from one place
 
-- Logged-in users type a song name in chat (or use a "Request a song" button).
-- Server runs a YouTube search, picks the top music result, and appends it to the queue automatically.
-- A small "🎵 requested by @user" badge appears on that queue item and in chat.
+### Database migration
 
-## Chat
+Create a single SQL function `public.advance_queue(expected_current uuid)` (SECURITY DEFINER) that:
+- Locks `playback_state` row 1 with `FOR UPDATE`
+- If `current_queue_id` no longer matches `expected_current` → exit (someone else already advanced; this kills the race)
+- Marks current track `played`
+- Picks the next `pending` track ordered by `position`
+- Marks it `playing` and updates `playback_state` with new `started_at = now()`
+- If no next track, sets state to idle
 
-- Real-time chat panel beside the player (Lovable Cloud Realtime).
-- Messages show username, timestamp, and a special style for song requests and admin announcements.
-- Login required to send; guests see messages read-only.
-- Basic moderation: admin can delete messages and ban users.
+Also:
+- Add a trigger to keep `playback_state.updated_at` fresh
+- Normalise existing `position` values to a consistent millisecond scale, and fix the `queue.position` default to use `(EXTRACT(epoch FROM now()) * 1000)::bigint`
+- One-time cleanup: set the older of the two duplicate "playing" rows back to `played` and ensure only one row is `playing`
+- Grant `EXECUTE` on `advance_queue` to `authenticated` and `anon` (RLS still protects underlying tables)
 
-## Roles & data
+### Client changes
 
-- `profiles` table (username, avatar)
-- `user_roles` table with `admin` / `user` enum (separate table, security-definer `has_role` function)
-- `queue` table (position, source: youtube/upload, external_id or file_url, title, artist, thumbnail, requested_by, status)
-- `playback_state` singleton (current_queue_id, started_at, is_playing)
-- `messages` table (user_id, content, type: chat/request/system, created_at)
-- `listeners` presence channel for live count
+- **`src/components/Player.tsx`**: Replace the body of `advanceQueue()` with a single `supabase.rpc("advance_queue", { expected_current: state.current_queue_id })` call. Remove all the race-prone `update`/`select`/`update` chain.
+- **`src/components/SkipVote.tsx`**: Keep the vote insert; on threshold, also call the same RPC instead of relying on every client.
+- **`src/routes/admin.tsx`**:
+  - `maybeStartPlayback()` — wrap in the same RPC pattern (call `advance_queue(NULL)` which only starts if state is idle).
+  - Drag-reorder: switch positions to use millisecond-scale (`Date.now() + idx`) which matches the new default and existing newer rows.
 
-## Pages
+### Player resync hardening
 
-- `/` — Player + chat (public)
-- `/login`, `/signup`
-- `/admin` — Admin dashboard (queue manager, YouTube search, upload, moderation) — protected route
+In `Player.tsx`, when `state.current_queue_id` changes:
+- For YouTube: always call `loadVideoById` with `startSeconds: currentOffsetSeconds()` — don't trust the stale player state.
+- For uploads: force `audio.src` reload before `play()`.
 
-## What you'll need to provide after approval
+This guarantees every client lands on the new track immediately when the server state changes, fixing "live sync drops out after skip."
 
-- **YouTube Data API key** (free from Google Cloud Console) for searching tracks. I'll guide you when we get there.
-- Decide if guests should see chat messages or only see the player (default: read-only chat for guests).
+## What you'll see after the fix
 
-## Out of scope (for v1)
+- Track ends → exactly one client-or-anyone triggers `advance_queue`; all listeners jump to the same next track within ~1 sec via the existing realtime subscription.
+- Admin Skip / vote-skip → instant, single, atomic transition.
+- Queue order is stable and matches what admin sees.
+- No more duplicate "playing" rows.
 
-- Native mobile apps
-- DJ scheduling / multiple stations
-- Monetization / ads
-- Skipping/voting by listeners (only admin controls playback)
+No new secrets or env vars needed.

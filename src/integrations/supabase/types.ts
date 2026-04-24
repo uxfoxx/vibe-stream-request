@@ -36,7 +36,15 @@ export type Database = {
           message_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messages: {
         Row: {
@@ -151,12 +159,10 @@ export type Database = {
           id: string
           position: number
           requested_by: string | null
-          skip_vote_count: number
           source: Database["public"]["Enums"]["track_source"]
           status: Database["public"]["Enums"]["queue_status"]
           thumbnail: string | null
           title: string
-          upvotes: number
         }
         Insert: {
           artist?: string | null
@@ -167,12 +173,10 @@ export type Database = {
           id?: string
           position?: number
           requested_by?: string | null
-          skip_vote_count?: number
           source: Database["public"]["Enums"]["track_source"]
           status?: Database["public"]["Enums"]["queue_status"]
           thumbnail?: string | null
           title: string
-          upvotes?: number
         }
         Update: {
           artist?: string | null
@@ -183,12 +187,10 @@ export type Database = {
           id?: string
           position?: number
           requested_by?: string | null
-          skip_vote_count?: number
           source?: Database["public"]["Enums"]["track_source"]
           status?: Database["public"]["Enums"]["queue_status"]
           thumbnail?: string | null
           title?: string
-          upvotes?: number
         }
         Relationships: []
       }
@@ -211,7 +213,15 @@ export type Database = {
           queue_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "queue_upvotes_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_playlists: {
         Row: {
@@ -262,7 +272,15 @@ export type Database = {
           queue_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "skip_votes_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       track_reactions: {
         Row: {
@@ -286,25 +304,15 @@ export type Database = {
           queue_id?: string
           user_id?: string
         }
-        Relationships: []
-      }
-      word_filters: {
-        Row: {
-          created_at: string
-          id: string
-          word: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          word: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          word?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "track_reactions_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -327,11 +335,30 @@ export type Database = {
         }
         Relationships: []
       }
+      word_filters: {
+        Row: {
+          created_at: string
+          id: string
+          word: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          word: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          word?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      advance_queue: { Args: { expected_current?: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

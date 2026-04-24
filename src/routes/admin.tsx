@@ -217,15 +217,8 @@ function QueueTab() {
   }
 
   async function maybeStartPlayback() {
-    const { data: ps } = await supabase.from("playback_state").select("*").eq("id", 1).maybeSingle();
-    if (ps?.current_queue_id) return;
-    const { data: next } = await supabase.from("queue").select("*")
-      .eq("status", "pending").order("position", { ascending: true }).limit(1).maybeSingle();
-    if (!next) return;
-    await supabase.from("queue").update({ status: "playing" }).eq("id", next.id);
-    await supabase.from("playback_state").update({
-      current_queue_id: next.id, started_at: new Date().toISOString(), is_playing: true,
-    }).eq("id", 1);
+    // Atomic, race-safe: passing null only advances when state is idle.
+    await (supabase.rpc as any)("advance_queue", { expected_current: null });
   }
 
   async function removeItem(id: string) {
@@ -262,11 +255,12 @@ function QueueTab() {
     setItems(reordered);
     reordering.current = true;
 
-    const now = Date.now();
+    // Use millisecond-scale positions (matches new queue.position default).
+    const base = Date.now();
     try {
       await Promise.all(
         reordered.map(({ id }, idx) =>
-          supabase.from("queue").update({ position: now + idx * 1000 }).eq("id", id)
+          supabase.from("queue").update({ position: base + idx }).eq("id", id)
         )
       );
     } finally {

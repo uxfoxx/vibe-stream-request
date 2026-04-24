@@ -227,6 +227,7 @@ export function Player() {
         try {
           const cur = ytRef.current.getVideoData?.()?.video_id;
           if (cur !== track.external_id) {
+            // New track — always reload from server-truth offset.
             ytRef.current.loadVideoById({ videoId: track.external_id, startSeconds: currentOffsetSeconds() });
           } else {
             const offset = currentOffsetSeconds();

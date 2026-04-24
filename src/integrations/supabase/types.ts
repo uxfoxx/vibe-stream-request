@@ -50,6 +50,7 @@ export type Database = {
         Row: {
           content: string
           created_at: string
+          guest_name: string | null
           id: string
           queue_id: string | null
           type: Database["public"]["Enums"]["message_type"]
@@ -58,6 +59,7 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string
+          guest_name?: string | null
           id?: string
           queue_id?: string | null
           type?: Database["public"]["Enums"]["message_type"]
@@ -66,6 +68,7 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string
+          guest_name?: string | null
           id?: string
           queue_id?: string | null
           type?: Database["public"]["Enums"]["message_type"]
@@ -222,25 +225,31 @@ export type Database = {
       }
       scheduled_playlists: {
         Row: {
+          active: boolean
           created_at: string
+          day_of_week: number
           id: string
+          items: Json
           name: string
-          scheduled_for: string
-          tracks: Json
+          start_hour: number
         }
         Insert: {
+          active?: boolean
           created_at?: string
+          day_of_week: number
           id?: string
+          items?: Json
           name: string
-          scheduled_for: string
-          tracks?: Json
+          start_hour: number
         }
         Update: {
+          active?: boolean
           created_at?: string
+          day_of_week?: number
           id?: string
+          items?: Json
           name?: string
-          scheduled_for?: string
-          tracks?: Json
+          start_hour?: number
         }
         Relationships: []
       }

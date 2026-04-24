@@ -1,55 +1,70 @@
+# Scheduled playlists — automatic enqueue
 
-# Fix Radio Playback, Skip & Sync Issues
+## Current state
 
-## What's broken (confirmed by inspecting the database)
+The admin already has a **Schedule** tab where admins can create weekly recurring playlists (name, day of week, hour 0–23, list of YouTube URLs/IDs) and enable/disable/delete them. Data is saved to the `scheduled_playlists` table.
 
-1. **Two tracks have `status = "playing"` at the same time.** When a track ends, *every* listener's browser races to call `advanceQueue()`. Multiple concurrent `UPDATE`s mark the next track playing more than once and skip past the actual next song. This is the root cause of the "not playing live properly" symptom.
+What's missing: **nothing actually enqueues the playlist items when the scheduled hour arrives.** We'll add that automation plus a few UX polish items on the existing tab.
 
-2. **Skip doesn't work reliably.** Both the admin Skip button and the listener skip-vote use the same racy client-side `advanceQueue()`. When several clients press it, the queue jumps unpredictably.
+## What we'll build
 
-3. **Inconsistent `position` scheme breaks queue order.** Some rows store position as epoch seconds (1.77e9), others as epoch milliseconds (1.77e12) from drag-reorder. Newly requested songs always sort before drag-reordered ones.
+### 1. Automatic enqueue (the core piece)
 
-4. **`started_at` drifts.** `playback_state.updated_at` is stale; no trigger keeps it fresh.
+Add a public hook route that, when called, looks at every active scheduled playlist whose `day_of_week` + `start_hour` matches the current time (UTC) and enqueues all of its items into the `queue` table as `pending` tracks. A `pg_cron` job will hit this route once an hour, on the hour.
 
-## Fix — one atomic server-side advance, called from one place
+- **Route**: `src/routes/api/public/hooks/run-scheduled-playlists.ts` (POST)
+  - Uses `supabaseAdmin` (service role) to bypass RLS
+  - Computes current UTC `day_of_week` (0–6) and `hour` (0–23)
+  - Fetches active playlists matching both
+  - Inserts each playlist's items into `queue` with:
+    - `source: 'youtube'`, `external_id: item.videoId`, `title`, `thumbnail`
+    - `status: 'pending'`, `position: Date.now() + index` (ms, matching existing convention)
+    - `requested_by: null`
+  - Idempotency: track which playlist+hour was last run via a small `scheduled_playlist_runs` table (playlist_id + run_at unique) so re-invocations within the same hour don't double-enqueue
+  - Posts a system chat message: "🎵 Playlist '{name}' started"
+- **Cron**: `pg_cron` job `run-scheduled-playlists` at `0 * * * *` (every hour on the hour) calling the route
+- **Schema migration**:
+  ```sql
+  create table public.scheduled_playlist_runs (
+    id uuid primary key default gen_random_uuid(),
+    playlist_id uuid references public.scheduled_playlists(id) on delete cascade not null,
+    run_at timestamptz not null default now(),
+    items_enqueued int not null default 0,
+    unique (playlist_id, date_trunc('hour', run_at))
+  );
+  alter table public.scheduled_playlist_runs enable row level security;
+  create policy "Admins can view runs" on public.scheduled_playlist_runs
+    for select using (has_role(auth.uid(), 'admin'));
+  ```
 
-### Database migration
+### 2. Resolve YouTube titles when creating a playlist
 
-Create a single SQL function `public.advance_queue(expected_current uuid)` (SECURITY DEFINER) that:
-- Locks `playback_state` row 1 with `FOR UPDATE`
-- If `current_queue_id` no longer matches `expected_current` → exit (someone else already advanced; this kills the race)
-- Marks current track `played`
-- Picks the next `pending` track ordered by `position`
-- Marks it `playing` and updates `playback_state` with new `started_at = now()`
-- If no next track, sets state to idle
+Right now, items added by URL/ID store the videoId as the title (placeholder). We'll call the existing YouTube search infrastructure to fetch real titles/channels at playlist creation time. New server fn `resolveYouTubeVideos({ videoIds })` calls the YouTube `videos?part=snippet` endpoint and returns `{ videoId, title, channel, thumbnail, duration_seconds }` for each.
 
-Also:
-- Add a trigger to keep `playback_state.updated_at` fresh
-- Normalise existing `position` values to a consistent millisecond scale, and fix the `queue.position` default to use `(EXTRACT(epoch FROM now()) * 1000)::bigint`
-- One-time cleanup: set the older of the two duplicate "playing" rows back to `played` and ensure only one row is `playing`
-- Grant `EXECUTE` on `advance_queue` to `authenticated` and `anon` (RLS still protects underlying tables)
+The Create form will call this on save, so saved `items` have real metadata that the queue and "now playing" will display correctly.
 
-### Client changes
+### 3. Schedule tab UX polish
 
-- **`src/components/Player.tsx`**: Replace the body of `advanceQueue()` with a single `supabase.rpc("advance_queue", { expected_current: state.current_queue_id })` call. Remove all the race-prone `update`/`select`/`update` chain.
-- **`src/components/SkipVote.tsx`**: Keep the vote insert; on threshold, also call the same RPC instead of relying on every client.
-- **`src/routes/admin.tsx`**:
-  - `maybeStartPlayback()` — wrap in the same RPC pattern (call `advance_queue(NULL)` which only starts if state is idle).
-  - Drag-reorder: switch positions to use millisecond-scale (`Date.now() + idx`) which matches the new default and existing newer rows.
+- **Hour picker**: replace the bare number input with a dropdown of `00:00`–`23:00` (clearer for non-technical admins) and label it as **server time (UTC)**
+- **Items preview**: in the playlists list, expand each row to show a small thumbnail+title list of the items (collapsible)
+- **"Run now" button** per playlist: manually trigger the enqueue for testing without waiting for the hour. Calls the same logic via a server fn `runPlaylistNow({ id })` (admin-only via `requireSupabaseAuth` + role check)
+- **Last run indicator**: show "Last run: {relative time} · {N tracks}" pulled from `scheduled_playlist_runs`
+- **Validation**: prevent creating a playlist with zero valid video IDs; show an error instead of silently creating an empty one
 
-### Player resync hardening
+## Technical details
 
-In `Player.tsx`, when `state.current_queue_id` changes:
-- For YouTube: always call `loadVideoById` with `startSeconds: currentOffsetSeconds()` — don't trust the stale player state.
-- For uploads: force `audio.src` reload before `play()`.
+- **Files created**
+  - `src/routes/api/public/hooks/run-scheduled-playlists.ts` — POST handler
+  - `src/lib/scheduled.functions.ts` — `resolveYouTubeVideos`, `runPlaylistNow` server fns
+  - One SQL migration (table + RLS) and one cron-job insert (separate, since it contains a hard-coded URL/key)
+- **Files edited**
+  - `src/routes/admin.tsx` — `ScheduleTab`: title resolution on create, hour dropdown, items preview, Run-now button, last-run display, empty-items validation
+- **No changes to**: queue/playback logic, RLS on `queue`/`scheduled_playlists`, existing types (the new types regenerate automatically)
+- **Time zone**: scheduling uses **UTC** to match server time and avoid surprises across listeners' time zones. We'll label it clearly in the UI.
 
-This guarantees every client lands on the new track immediately when the server state changes, fixing "live sync drops out after skip."
+## Out of scope
 
-## What you'll see after the fix
-
-- Track ends → exactly one client-or-anyone triggers `advance_queue`; all listeners jump to the same next track within ~1 sec via the existing realtime subscription.
-- Admin Skip / vote-skip → instant, single, atomic transition.
-- Queue order is stable and matches what admin sees.
-- No more duplicate "playing" rows.
-
-No new secrets or env vars needed.
+- Per-minute precision (hourly cadence is sufficient for "live radio" weekly schedules)
+- One-off (non-recurring) scheduled playlists
+- Drag-to-reorder items inside a saved playlist
+- Editing a playlist after creation (delete + recreate for now)

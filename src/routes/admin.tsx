@@ -255,11 +255,12 @@ function QueueTab() {
     setItems(reordered);
     reordering.current = true;
 
-    const now = Date.now();
+    // Use millisecond-scale positions (matches new queue.position default).
+    const base = Date.now();
     try {
       await Promise.all(
         reordered.map(({ id }, idx) =>
-          supabase.from("queue").update({ position: now + idx * 1000 }).eq("id", id)
+          supabase.from("queue").update({ position: base + idx }).eq("id", id)
         )
       );
     } finally {

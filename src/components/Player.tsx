@@ -274,22 +274,11 @@ export function Player() {
   }, [hasJoined]);
 
   async function advanceQueue() {
-    if (!state?.current_queue_id) return;
-    await supabase.from("queue").update({ status: "played" }).eq("id", state.current_queue_id);
-    const { data: next } = await supabase
-      .from("queue").select("*").eq("status", "pending").order("position", { ascending: true }).limit(1).maybeSingle();
-    if (next) {
-      await supabase.from("queue").update({ status: "playing" }).eq("id", next.id);
-      await supabase.from("playback_state").update({
-        current_queue_id: next.id,
-        started_at: new Date().toISOString(),
-        is_playing: true,
-      }).eq("id", 1);
-    } else {
-      await supabase.from("playback_state").update({
-        current_queue_id: null, started_at: null, is_playing: false,
-      }).eq("id", 1);
-    }
+    // Atomic server-side advance — race-safe. expected_current ensures only the
+    // first caller wins; subsequent calls (from other clients ending at the same
+    // time) become no-ops because the server has already moved on.
+    const expected = state?.current_queue_id ?? null;
+    await (supabase.rpc as any)("advance_queue", { expected_current: expected });
   }
 
   // F28: Share button

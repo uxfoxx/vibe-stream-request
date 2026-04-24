@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      message_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -84,25 +116,31 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          ban_reason: string | null
           banned: boolean
           created_at: string
           id: string
+          temp_ban_until: string | null
           updated_at: string
           username: string
         }
         Insert: {
           avatar_url?: string | null
+          ban_reason?: string | null
           banned?: boolean
           created_at?: string
           id: string
+          temp_ban_until?: string | null
           updated_at?: string
           username: string
         }
         Update: {
           avatar_url?: string | null
+          ban_reason?: string | null
           banned?: boolean
           created_at?: string
           id?: string
+          temp_ban_until?: string | null
           updated_at?: string
           username?: string
         }
@@ -153,6 +191,120 @@ export type Database = {
         }
         Relationships: []
       }
+      queue_upvotes: {
+        Row: {
+          created_at: string
+          id: string
+          queue_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          queue_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          queue_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queue_upvotes_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_playlists: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          scheduled_for: string
+          tracks: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          scheduled_for: string
+          tracks?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          scheduled_for?: string
+          tracks?: Json
+        }
+        Relationships: []
+      }
+      skip_votes: {
+        Row: {
+          created_at: string
+          id: string
+          queue_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          queue_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          queue_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skip_votes_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      track_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          queue_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          queue_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          queue_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "track_reactions_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -171,6 +323,24 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      word_filters: {
+        Row: {
+          created_at: string
+          id: string
+          word: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          word: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          word?: string
         }
         Relationships: []
       }

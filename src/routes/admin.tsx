@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { searchYouTube } from "@/lib/youtube.functions";
+import { resolveYouTubeVideos, runPlaylistNow as runPlaylistNowFn } from "@/lib/scheduled.functions";
 import type { QueueItem, Profile, WordFilter, ScheduledPlaylist } from "@/lib/db-types";
 import { toast } from "sonner";
 import {
@@ -588,11 +589,8 @@ function ScheduleTab() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [runningId, setRunningId] = useState<string | null>(null);
 
-  const resolveVideos = useServerFn(
-    // lazy-import to avoid a cycle and keep this tab self-contained
-    require("@/lib/scheduled.functions").resolveYouTubeVideos
-  );
-  const runNow = useServerFn(require("@/lib/scheduled.functions").runPlaylistNow);
+  const resolveVideos = useServerFn(resolveYouTubeVideos);
+  const runNow = useServerFn(runPlaylistNowFn);
 
   async function load() {
     const { data } = await supabase

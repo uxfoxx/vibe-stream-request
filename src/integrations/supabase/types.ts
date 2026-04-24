@@ -223,6 +223,38 @@ export type Database = {
           },
         ]
       }
+      scheduled_playlist_runs: {
+        Row: {
+          created_at: string
+          id: string
+          items_enqueued: number
+          playlist_id: string
+          run_hour: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items_enqueued?: number
+          playlist_id: string
+          run_hour: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items_enqueued?: number
+          playlist_id?: string
+          run_hour?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_playlist_runs_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_playlists: {
         Row: {
           active: boolean

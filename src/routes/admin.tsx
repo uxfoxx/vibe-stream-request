@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { searchYouTube } from "@/lib/youtube.functions";
+import { resolveYouTubeVideos, runPlaylistNow as runPlaylistNowFn } from "@/lib/scheduled.functions";
 import type { QueueItem, Profile, WordFilter, ScheduledPlaylist } from "@/lib/db-types";
 import { toast } from "sonner";
 import {
@@ -575,30 +576,86 @@ function AnalyticsTab() {
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+type RunInfo = { run_hour: string; items_enqueued: number };
+
 function ScheduleTab() {
   const [playlists, setPlaylists] = useState<ScheduledPlaylist[]>([]);
+  const [runs, setRuns] = useState<Record<string, RunInfo>>({});
   const [name, setName] = useState("");
   const [day, setDay] = useState(0);
   const [hour, setHour] = useState(20);
   const [urlsInput, setUrlsInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [runningId, setRunningId] = useState<string | null>(null);
+
+  const resolveVideos = useServerFn(resolveYouTubeVideos);
+  const runNow = useServerFn(runPlaylistNowFn);
 
   async function load() {
-    const { data } = await supabase.from("scheduled_playlists").select("*").order("day_of_week").order("start_hour");
+    const { data } = await supabase
+      .from("scheduled_playlists")
+      .select("*")
+      .order("day_of_week")
+      .order("start_hour");
     setPlaylists((data as ScheduledPlaylist[]) ?? []);
+
+    const { data: runRows } = await supabase
+      .from("scheduled_playlist_runs")
+      .select("playlist_id, run_hour, items_enqueued")
+      .order("run_hour", { ascending: false });
+    const map: Record<string, RunInfo> = {};
+    for (const r of (runRows as any[]) ?? []) {
+      if (!map[r.playlist_id]) map[r.playlist_id] = { run_hour: r.run_hour, items_enqueued: r.items_enqueued };
+    }
+    setRuns(map);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
+
+  function parseIds(text: string): string[] {
+    const tokens = text.split(/[\n,\s]+/).map((s) => s.trim()).filter(Boolean);
+    const ids: string[] = [];
+    for (const tok of tokens) {
+      const m = tok.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
+      const id = m ? m[1] : (/^[A-Za-z0-9_-]{11}$/.test(tok) ? tok : null);
+      if (id && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
 
   async function create() {
     if (!name.trim()) return;
-    const urls = urlsInput.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
-    const items = urls.map(url => {
-      const match = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-      const videoId = match ? match[1] : url;
-      return { videoId, title: videoId, channel: "", thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` };
-    });
+    const ids = parseIds(urlsInput);
+    if (ids.length === 0) {
+      toast.error("Add at least one valid YouTube URL or video ID");
+      return;
+    }
     setSaving(true);
+    let items: ScheduledPlaylist["items"] = ids.map((videoId) => ({
+      videoId,
+      title: videoId,
+      channel: "",
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    }));
+    try {
+      const out = await resolveVideos({ data: { videoIds: ids } });
+      const resolved = (out?.results ?? []) as Array<{
+        videoId: string; title: string; channel: string; thumbnail: string;
+      }>;
+      const byId = new Map(resolved.map((r) => [r.videoId, r]));
+      items = ids.map((videoId) => {
+        const r = byId.get(videoId);
+        return r
+          ? { videoId, title: r.title, channel: r.channel, thumbnail: r.thumbnail }
+          : { videoId, title: videoId, channel: "", thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` };
+      });
+    } catch (err: any) {
+      toast.message("Saved without resolved titles", { description: err?.message ?? "YouTube lookup failed" });
+    }
+
     const { error } = await supabase.from("scheduled_playlists").insert({
       name: name.trim(), day_of_week: day, start_hour: hour, items, active: true,
     });
@@ -618,35 +675,66 @@ function ScheduleTab() {
     load();
   }
 
+  async function runPlaylistNow(id: string) {
+    setRunningId(id);
+    try {
+      const out = await runNow({ data: { id } });
+      toast.success(`Enqueued ${out?.enqueued ?? 0} tracks`);
+      load();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to run playlist");
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  function relative(iso: string) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.round(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.round(h / 24);
+    return `${d}d ago`;
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <h2 className="font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Create scheduled playlist</h2>
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Calendar className="h-4 w-4" /> Create scheduled playlist
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Runs every week on the chosen day &amp; hour (UTC). Tracks are added to the queue automatically.
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Input value={name} onChange={e => setName(e.target.value)} placeholder="Playlist name" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Playlist name" />
           <select
             value={day}
-            onChange={e => setDay(parseInt(e.target.value))}
+            onChange={(e) => setDay(parseInt(e.target.value))}
             className="rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+            {DAYS.map((d, i) => (
+              <option key={i} value={i}>{d}</option>
+            ))}
           </select>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={23}
-              value={hour}
-              onChange={e => setHour(parseInt(e.target.value))}
-              className="w-20"
-            />
-            <span className="text-sm text-muted-foreground">:00</span>
-          </div>
+          <select
+            value={hour}
+            onChange={(e) => setHour(parseInt(e.target.value))}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>{h.toString().padStart(2, "0")}:00 UTC</option>
+            ))}
+          </select>
         </div>
         <textarea
           value={urlsInput}
-          onChange={e => setUrlsInput(e.target.value)}
-          placeholder="YouTube URLs or video IDs, one per line"
+          onChange={(e) => setUrlsInput(e.target.value)}
+          placeholder="YouTube URLs or 11-char video IDs, one per line"
           rows={4}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
@@ -662,25 +750,62 @@ function ScheduleTab() {
           <p className="text-sm text-muted-foreground">No scheduled playlists yet.</p>
         ) : (
           <ul className="space-y-2">
-            {playlists.map(p => (
-              <li key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {DAYS[p.day_of_week]} at {p.start_hour}:00 · {p.items.length} tracks
-                  </p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${p.active ? "bg-green-500/20 text-green-600" : "bg-muted text-muted-foreground"}`}>
-                  {p.active ? "Active" : "Inactive"}
-                </span>
-                <Button size="sm" variant="outline" onClick={() => toggleActive(p.id, p.active)}>
-                  {p.active ? "Disable" : "Enable"}
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => deletePlaylist(p.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </li>
-            ))}
+            {playlists.map((p) => {
+              const lastRun = runs[p.id];
+              const isOpen = !!expanded[p.id];
+              return (
+                <li key={p.id} className="rounded-lg border border-border">
+                  <div className="flex items-center gap-3 p-3">
+                    <button
+                      onClick={() => setExpanded((e) => ({ ...e, [p.id]: !e[p.id] }))}
+                      className="text-xs text-muted-foreground hover:text-foreground w-6"
+                      aria-label="Toggle items"
+                    >
+                      {isOpen ? "▾" : "▸"}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {DAYS[p.day_of_week]} at {p.start_hour.toString().padStart(2, "0")}:00 UTC · {p.items.length} tracks
+                        {lastRun ? ` · last run ${relative(lastRun.run_hour)} (${lastRun.items_enqueued})` : " · never run"}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded ${p.active ? "bg-green-500/20 text-green-600" : "bg-muted text-muted-foreground"}`}>
+                      {p.active ? "Active" : "Inactive"}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => runPlaylistNow(p.id)}
+                      disabled={runningId === p.id || p.items.length === 0}
+                    >
+                      {runningId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Run now"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => toggleActive(p.id, p.active)}>
+                      {p.active ? "Disable" : "Enable"}
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => deletePlaylist(p.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {isOpen && (
+                    <ul className="border-t border-border p-3 space-y-1.5">
+                      {p.items.length === 0 ? (
+                        <li className="text-xs text-muted-foreground">No items.</li>
+                      ) : (
+                        p.items.map((it, idx) => (
+                          <li key={`${p.id}-${idx}`} className="flex items-center gap-2 text-xs">
+                            <img src={it.thumbnail} alt="" className="h-8 w-12 object-cover rounded" loading="lazy" />
+                            <span className="truncate flex-1">{it.title || it.videoId}</span>
+                            <span className="text-muted-foreground truncate max-w-[10rem]">{it.channel}</span>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

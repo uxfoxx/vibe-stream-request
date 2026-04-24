@@ -14,35 +14,10 @@ export type Database = {
   }
   public: {
     Tables: {
-      message_reactions: {
-        Row: {
-          created_at: string
-          emoji: string
-          id: string
-          message_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          emoji: string
-          id?: string
-          message_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          emoji?: string
-          id?: string
-          message_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       messages: {
         Row: {
           content: string
           created_at: string
-          guest_name: string | null
           id: string
           queue_id: string | null
           type: Database["public"]["Enums"]["message_type"]
@@ -51,7 +26,6 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string
-          guest_name?: string | null
           id?: string
           queue_id?: string | null
           type?: Database["public"]["Enums"]["message_type"]
@@ -60,7 +34,6 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string
-          guest_name?: string | null
           id?: string
           queue_id?: string | null
           type?: Database["public"]["Enums"]["message_type"]
@@ -111,31 +84,25 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
-          ban_reason: string | null
           banned: boolean
           created_at: string
           id: string
-          temp_ban_until: string | null
           updated_at: string
           username: string
         }
         Insert: {
           avatar_url?: string | null
-          ban_reason?: string | null
           banned?: boolean
           created_at?: string
           id: string
-          temp_ban_until?: string | null
           updated_at?: string
           username: string
         }
         Update: {
           avatar_url?: string | null
-          ban_reason?: string | null
           banned?: boolean
           created_at?: string
           id?: string
-          temp_ban_until?: string | null
           updated_at?: string
           username?: string
         }
@@ -151,12 +118,10 @@ export type Database = {
           id: string
           position: number
           requested_by: string | null
-          skip_vote_count: number
           source: Database["public"]["Enums"]["track_source"]
           status: Database["public"]["Enums"]["queue_status"]
           thumbnail: string | null
           title: string
-          upvotes: number
         }
         Insert: {
           artist?: string | null
@@ -167,12 +132,10 @@ export type Database = {
           id?: string
           position?: number
           requested_by?: string | null
-          skip_vote_count?: number
           source: Database["public"]["Enums"]["track_source"]
           status?: Database["public"]["Enums"]["queue_status"]
           thumbnail?: string | null
           title: string
-          upvotes?: number
         }
         Update: {
           artist?: string | null
@@ -183,126 +146,10 @@ export type Database = {
           id?: string
           position?: number
           requested_by?: string | null
-          skip_vote_count?: number
           source?: Database["public"]["Enums"]["track_source"]
           status?: Database["public"]["Enums"]["queue_status"]
           thumbnail?: string | null
           title?: string
-          upvotes?: number
-        }
-        Relationships: []
-      }
-      queue_upvotes: {
-        Row: {
-          created_at: string
-          id: string
-          queue_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          queue_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          queue_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      scheduled_playlists: {
-        Row: {
-          active: boolean
-          created_at: string
-          day_of_week: number
-          id: string
-          items: Json
-          name: string
-          start_hour: number
-        }
-        Insert: {
-          active?: boolean
-          created_at?: string
-          day_of_week: number
-          id?: string
-          items?: Json
-          name: string
-          start_hour: number
-        }
-        Update: {
-          active?: boolean
-          created_at?: string
-          day_of_week?: number
-          id?: string
-          items?: Json
-          name?: string
-          start_hour?: number
-        }
-        Relationships: []
-      }
-      skip_votes: {
-        Row: {
-          created_at: string
-          id: string
-          queue_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          queue_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          queue_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      track_reactions: {
-        Row: {
-          created_at: string
-          emoji: string
-          id: string
-          queue_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          emoji: string
-          id?: string
-          queue_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          emoji?: string
-          id?: string
-          queue_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      word_filters: {
-        Row: {
-          created_at: string
-          id: string
-          word: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          word: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          word?: string
         }
         Relationships: []
       }
@@ -332,6 +179,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advance_queue: { Args: { expected_current?: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

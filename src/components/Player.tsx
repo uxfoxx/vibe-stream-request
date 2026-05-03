@@ -61,25 +61,62 @@ export function Player() {
   // Listener milestone ref
   const prevListenerCountRef = useRef(0);
 
-  // Load playback state + subscribe
+  // Load playback state + subscribe (with auto-resync on reconnect / visibility / heartbeat)
   useEffect(() => {
-    let ch: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
-    async function init() {
+    async function refetch() {
       const { data } = await supabase.from("playback_state").select("*").eq("id", 1).maybeSingle();
+      if (cancelled || !data) return;
       stateRef.current = data as PlaybackState;
       setState(data as PlaybackState);
-      ch = supabase
-        .channel("playback")
-        .on("postgres_changes", { event: "*", schema: "public", table: "playback_state" }, (payload) => {
-          stateRef.current = payload.new as PlaybackState;
-          setState(payload.new as PlaybackState);
-        })
-        .subscribe();
     }
-    init();
-    return () => { if (ch) supabase.removeChannel(ch); };
+
+    refetch();
+
+    const ch = supabase
+      .channel("playback")
+      .on("postgres_changes", { event: "*", schema: "public", table: "playback_state" }, (payload) => {
+        const next = payload.new as PlaybackState;
+        stateRef.current = next;
+        setState(next);
+      })
+      .subscribe((status) => {
+        // On (re)subscribe pull fresh truth so we never miss an event during a drop
+        if (status === "SUBSCRIBED") refetch();
+      });
+
+    function onVisible() {
+      if (document.visibilityState === "visible") refetch();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", refetch);
+
+    // Heartbeat: reconcile server truth every 15s as a safety net
+    const hb = setInterval(refetch, 15000);
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", refetch);
+      clearInterval(hb);
+    };
   }, []);
+
+  // When current track id changes, also subscribe to that queue row so duration
+  // and metadata updates propagate live to all listeners.
+  useEffect(() => {
+    const id = state?.current_queue_id;
+    if (!id) return;
+    const ch = supabase
+      .channel(`queue-row-${id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "queue", filter: `id=eq.${id}` }, (p) => {
+        setTrack(p.new as QueueItem);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [state?.current_queue_id]);
 
   // When playback state changes, fetch the current track
   useEffect(() => {
@@ -252,6 +289,26 @@ export function Player() {
     if (Math.abs(a.currentTime - offset) > 2) a.currentTime = offset;
     if (state?.is_playing) a.play().catch(() => {}); else a.pause();
   }, [track?.id, state?.is_playing, state?.started_at, hasJoined]);
+
+  // Continuous drift correction — every 5s, re-align players to server truth.
+  // Catches small drifts and missed realtime events between explicit syncs.
+  useEffect(() => {
+    if (!hasJoined || !state?.is_playing || !track) return;
+    const id = setInterval(() => {
+      const offset = currentOffsetSeconds();
+      try {
+        if (track.source === "youtube" && ytRef.current?.getCurrentTime) {
+          const t = ytRef.current.getCurrentTime();
+          if (Math.abs(t - offset) > 2) ytRef.current.seekTo(offset, true);
+        } else if (track.source === "upload" && audioRef.current) {
+          if (Math.abs(audioRef.current.currentTime - offset) > 2) {
+            audioRef.current.currentTime = offset;
+          }
+        }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(id);
+  }, [hasJoined, state?.is_playing, state?.started_at, track?.id, track?.source]);
 
   // Volume / mute — F8: persist volume
   useEffect(() => {

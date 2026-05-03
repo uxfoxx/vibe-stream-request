@@ -290,6 +290,26 @@ export function Player() {
     if (state?.is_playing) a.play().catch(() => {}); else a.pause();
   }, [track?.id, state?.is_playing, state?.started_at, hasJoined]);
 
+  // Continuous drift correction — every 5s, re-align players to server truth.
+  // Catches small drifts and missed realtime events between explicit syncs.
+  useEffect(() => {
+    if (!hasJoined || !state?.is_playing || !track) return;
+    const id = setInterval(() => {
+      const offset = currentOffsetSeconds();
+      try {
+        if (track.source === "youtube" && ytRef.current?.getCurrentTime) {
+          const t = ytRef.current.getCurrentTime();
+          if (Math.abs(t - offset) > 2) ytRef.current.seekTo(offset, true);
+        } else if (track.source === "upload" && audioRef.current) {
+          if (Math.abs(audioRef.current.currentTime - offset) > 2) {
+            audioRef.current.currentTime = offset;
+          }
+        }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(id);
+  }, [hasJoined, state?.is_playing, state?.started_at, track?.id, track?.source]);
+
   // Volume / mute — F8: persist volume
   useEffect(() => {
     if (ytRef.current?.setVolume) ytRef.current.setVolume(muted ? 0 : volume);

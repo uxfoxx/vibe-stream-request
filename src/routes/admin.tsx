@@ -755,7 +755,7 @@ function ScheduleTab() {
               const isOpen = !!expanded[p.id];
               return (
                 <li key={p.id} className="rounded-lg border border-border">
-                  <div className="flex items-center gap-3 p-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-3">
                     <button
                       onClick={() => setExpanded((e) => ({ ...e, [p.id]: !e[p.id] }))}
                       className="text-xs text-muted-foreground hover:text-foreground w-6"

@@ -25,10 +25,10 @@ function RadioPage() {
   return (
     <div className="min-h-screen bg-background pb-16">
       <Header />
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <h1 className="sr-only">Lovable Radio</h1>
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             <Player />
             <Queue />
             <History />

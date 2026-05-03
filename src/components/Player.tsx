@@ -295,7 +295,7 @@ export function Player() {
   }
 
   return (
-    <div className="rounded-2xl border border-border p-6 md:p-8 relative overflow-hidden"
+    <div className="rounded-2xl border border-border p-4 sm:p-6 md:p-8 relative overflow-hidden"
       style={{ background: "var(--gradient-radio)", boxShadow: "var(--shadow-glow)" }}>
       <div className="absolute inset-0 bg-card/60 backdrop-blur-xl" />
       <div className="relative">
@@ -320,14 +320,14 @@ export function Player() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-          <div className="h-40 w-40 rounded-xl overflow-hidden bg-muted shrink-0 grid place-items-center">
+          <div className="h-32 w-32 sm:h-40 sm:w-40 rounded-xl overflow-hidden bg-muted shrink-0 grid place-items-center">
             {track?.thumbnail
               ? <img src={track.thumbnail} alt={track.title} className="h-full w-full object-cover" />
               : <Music2 className="h-12 w-12 text-muted-foreground" />}
           </div>
 
           <div className="flex-1 min-w-0 text-center sm:text-left">
-            <h2 className="text-2xl md:text-3xl font-bold truncate">{track?.title ?? "Nothing playing"}</h2>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{track?.title ?? "Nothing playing"}</h2>
             <p className="text-muted-foreground truncate">{track?.artist ?? (track ? "" : "Waiting for the next track…")}</p>
 
             {/* Progress bar */}

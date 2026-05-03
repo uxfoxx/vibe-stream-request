@@ -306,7 +306,7 @@ export function Chat() {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card flex flex-col h-[600px]">
+    <div className="rounded-xl border border-border bg-card flex flex-col h-[70vh] sm:h-[600px] min-h-[420px]">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2 text-sm font-semibold">
         <MessageSquare className="h-4 w-4" /> Live chat
         <span className="ml-auto text-xs font-normal text-muted-foreground hidden sm:inline">

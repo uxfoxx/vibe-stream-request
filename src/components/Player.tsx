@@ -448,6 +448,11 @@ export function Player() {
               {track && hasJoined && (
                 <SkipVote queueId={track.id} onThresholdReached={advanceQueue} />
               )}
+              {track && hasJoined && (
+                <Button variant="ghost" size="sm" onClick={resyncNow} title="Resync to live">
+                  <RefreshCw className="h-4 w-4" /> Resync
+                </Button>
+              )}
               {/* F28: Share button */}
               {track && (
                 <Button variant="ghost" size="sm" onClick={shareNowPlaying} title="Share now playing">

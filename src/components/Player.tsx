@@ -339,6 +339,28 @@ export function Player() {
     await (supabase.rpc as any)("advance_queue", { expected_current: expected });
   }
 
+  // Force refetch server-truth playback state and re-seek both players to it.
+  async function resyncNow() {
+    const { data } = await supabase.from("playback_state").select("*").eq("id", 1).maybeSingle();
+    if (data) {
+      stateRef.current = data as PlaybackState;
+      setState(data as PlaybackState);
+    }
+    const started = (data as PlaybackState | null)?.started_at ?? state?.started_at;
+    const offset = started ? Math.max(0, (Date.now() - new Date(started).getTime()) / 1000) : 0;
+    try {
+      if (track?.source === "youtube" && ytRef.current?.seekTo) {
+        ytRef.current.seekTo(offset, true);
+        if ((data?.is_playing ?? state?.is_playing) && ytRef.current.playVideo) ytRef.current.playVideo();
+      } else if (track?.source === "upload" && audioRef.current) {
+        audioRef.current.currentTime = offset;
+        if (data?.is_playing ?? state?.is_playing) audioRef.current.play().catch(() => {});
+      }
+    } catch {}
+    setElapsed(offset);
+    toast.success("Resynced to live");
+  }
+
   // F28: Share button
   function shareNowPlaying() {
     if (!track) return;

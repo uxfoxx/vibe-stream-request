@@ -13,10 +13,33 @@ interface Props {
 }
 
 export function SkipVote({ queueId, onThresholdReached }: Props) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [voteCount, setVoteCount] = useState(0);
   const [hasVoted, setHasVoted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadSetting() {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("user_skip_voting_enabled")
+        .eq("id", 1)
+        .maybeSingle();
+      if (mounted && data) setEnabled(!!(data as any).user_skip_voting_enabled);
+    }
+    loadSetting();
+    const ch = supabase.channel("app-settings-skipvote")
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
+        const row = (payload.new as any) ?? (payload.old as any);
+        if (row && typeof row.user_skip_voting_enabled === "boolean") {
+          setEnabled(row.user_skip_voting_enabled);
+        }
+      })
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(ch); };
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -40,6 +63,8 @@ export function SkipVote({ queueId, onThresholdReached }: Props) {
   }, [queueId, user?.id]);
 
   if (!user) return null;
+  // When user skip-voting is disabled, hide the control for non-admins entirely.
+  if (!enabled && !isAdmin) return null;
 
   async function vote() {
     if (!user || loading) return;

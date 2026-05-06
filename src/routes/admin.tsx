@@ -12,8 +12,9 @@ import type { QueueItem, Profile, WordFilter, ScheduledPlaylist } from "@/lib/db
 import { toast } from "sonner";
 import {
   Music2, Plus, Trash2, Upload, Search, Loader2, GripVertical,
-  Users, Filter, BarChart2, Calendar, Shield,
+  Users, Filter, BarChart2, Calendar, Shield, Settings as SettingsIcon,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -117,7 +118,7 @@ function SortableQueueItem({
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
 
-type Tab = "queue" | "users" | "wordfilter" | "analytics" | "schedule";
+type Tab = "queue" | "users" | "wordfilter" | "analytics" | "schedule" | "settings";
 
 // ─── Admin dashboard ─────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ function AdminDashboard() {
     { id: "wordfilter", label: "Word Filter", icon: <Filter className="h-4 w-4" /> },
     { id: "analytics", label: "Analytics", icon: <BarChart2 className="h-4 w-4" /> },
     { id: "schedule", label: "Schedule", icon: <Calendar className="h-4 w-4" /> },
+    { id: "settings", label: "Settings", icon: <SettingsIcon className="h-4 w-4" /> },
   ];
 
   return (
@@ -157,7 +159,69 @@ function AdminDashboard() {
         {activeTab === "wordfilter" && <WordFilterTab />}
         {activeTab === "analytics" && <AnalyticsTab />}
         {activeTab === "schedule" && <ScheduleTab />}
+        {activeTab === "settings" && <SettingsTab />}
       </div>
+    </div>
+  );
+}
+
+// ─── Settings Tab ───────────────────────────────────────────────────────────
+function SettingsTab() {
+  const [skipVotingEnabled, setSkipVotingEnabled] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("user_skip_voting_enabled")
+        .eq("id", 1)
+        .maybeSingle();
+      if (mounted && data) setSkipVotingEnabled(!!(data as any).user_skip_voting_enabled);
+      if (mounted) setLoading(false);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  async function toggle(v: boolean) {
+    setSaving(true);
+    const prev = skipVotingEnabled;
+    setSkipVotingEnabled(v);
+    const { error } = await supabase
+      .from("app_settings")
+      .update({ user_skip_voting_enabled: v })
+      .eq("id", 1);
+    setSaving(false);
+    if (error) {
+      setSkipVotingEnabled(prev);
+      toast.error(error.message);
+    } else {
+      toast.success(v ? "User skip voting enabled" : "Only admins can skip now");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-border bg-card p-4">
+        <h2 className="font-semibold flex items-center gap-2 mb-4">
+          <SettingsIcon className="h-4 w-4" /> Playback controls
+        </h2>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Allow user skip voting</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              When off, only admins can skip the current track. Users will not see the skip-vote button.
+            </p>
+          </div>
+          <Switch
+            checked={skipVotingEnabled}
+            onCheckedChange={toggle}
+            disabled={loading || saving}
+          />
+        </div>
+      </section>
     </div>
   );
 }

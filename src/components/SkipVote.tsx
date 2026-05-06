@@ -63,6 +63,8 @@ export function SkipVote({ queueId, onThresholdReached }: Props) {
   }, [queueId, user?.id]);
 
   if (!user) return null;
+  // When user skip-voting is disabled, hide the control for non-admins entirely.
+  if (!enabled && !isAdmin) return null;
 
   async function vote() {
     if (!user || loading) return;

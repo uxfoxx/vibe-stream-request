@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          id: number
+          updated_at: string
+          user_skip_voting_enabled: boolean
+        }
+        Insert: {
+          id?: number
+          updated_at?: string
+          user_skip_voting_enabled?: boolean
+        }
+        Update: {
+          id?: number
+          updated_at?: string
+          user_skip_voting_enabled?: boolean
+        }
+        Relationships: []
+      }
       message_reactions: {
         Row: {
           created_at: string
